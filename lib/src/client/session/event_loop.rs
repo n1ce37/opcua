@@ -87,15 +87,17 @@ impl SessionEventLoop {
     pub async fn run(self) {
         let stream = self.enter();
         tokio::pin!(stream);
-        tokio::spawn(async move {
-            loop {
-                match stream.try_next().await {
-                    Ok(None) => break StatusCode::Good,
-                    Err(e) => break e,
-                    _ => (),
-                }
+        loop {
+            match stream.try_next().await {
+                Ok(None) => break StatusCode::Good,
+                Err(e) => break e,
+                _ => (),
             }
-        });
+        }
+    }
+
+    pub fn spwan(self) {
+        tokio::task::spawn(self.run());
     }
 
     /// Start the event loop, returning a stream that must be polled until it is closed.
