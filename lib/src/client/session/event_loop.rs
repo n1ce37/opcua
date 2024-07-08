@@ -84,29 +84,18 @@ impl SessionEventLoop {
     /// # Returns
     ///
     /// * `StatusCode` - [Status code](StatusCode) indicating how the session terminated.
-    pub async fn run(self) -> StatusCode {
+    pub async fn run(self) {
         let stream = self.enter();
         tokio::pin!(stream);
-        loop {
-            let r = stream.try_next().await;
-
-            match r {
-                Ok(None) => break StatusCode::Good,
-                Err(e) => break e,
-                _ => (),
+        tokio::spawn(async move {
+            loop {
+                match stream.try_next().await {
+                    Ok(None) => break StatusCode::Good,
+                    Err(e) => break e,
+                    _ => (),
+                }
             }
-        }
-    }
-
-    /// Convenience method for running the session event loop until completion on a tokio task.
-    /// This method will return a [`JoinHandle`](tokio::task::JoinHandle) that will terminate
-    /// once the session is closed manually, or after it fails to reconnect.
-    ///
-    /// # Returns
-    ///
-    /// * `JoinHandle<StatusCode>` - Handle to a tokio task wrapping the event loop.
-    pub fn spawn(self) -> tokio::task::JoinHandle<StatusCode> {
-        tokio::task::spawn(self.run())
+        });
     }
 
     /// Start the event loop, returning a stream that must be polled until it is closed.

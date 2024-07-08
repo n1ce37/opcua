@@ -149,10 +149,10 @@ impl fmt::Display for NodeId {
 // "Type"
 //      The IdentifierType encoded as a JSON number.
 //      Allowed values are:
-//            0 - UInt32 Identifier encoded as a JSON number.
-//            1 - A String Identifier encoded as a JSON string.
-//            2 - A Guid Identifier encoded as described in 5.4.2.7.
-//            3 - A ByteString Identifier encoded as described in 5.4.2.8.
+//            1 - UInt32 Identifier encoded as a JSON number.
+//            2 - A String Identifier encoded as a JSON string.
+//            3 - A Guid Identifier encoded as described in 5.4.2.7.
+//            4 - A ByteString Identifier encoded as described in 5.4.2.8.
 //      This field is omitted for UInt32 identifiers.
 // "Id"
 //      The Identifier.
@@ -166,14 +166,9 @@ impl fmt::Display for NodeId {
 
 #[derive(Serialize, Deserialize)]
 struct JsonNodeId {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "Type")]
-    id_type: Option<u32>,
-    #[serde(rename = "Id")]
+    namespace: serde_json::Value,
+    r#type: u8,
     id: serde_json::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "Namespace")]
-    namespace: Option<serde_json::Value>,
 }
 
 impl Serialize for NodeId {
@@ -181,23 +176,16 @@ impl Serialize for NodeId {
     where
         S: Serializer,
     {
-        let (id_type, id) = match &self.identifier {
-            Identifier::Numeric(id) => (None, json!(id)),
-            Identifier::String(id) => (Some(1), json!(id.as_ref())),
-            Identifier::Guid(id) => (Some(2), json!(id.to_string())),
-            Identifier::ByteString(id) => (Some(3), json!(id.as_base64())),
+        let (r#type, id) = match &self.identifier {
+            Identifier::Numeric(id) => (1, json!(id)),
+            Identifier::String(id) => (2, json!(id.as_ref())),
+            Identifier::Guid(id) => (3, json!(id.to_string())),
+            Identifier::ByteString(id) => (4, json!(id.as_base64())),
         };
-        // Omit namespace if it is 0
-        let namespace = if self.namespace == 0 {
-            None
-        } else {
-            Some(json!(self.namespace))
-        };
-
         let json = JsonNodeId {
-            id_type,
+            namespace: json!(self.namespace),
+            r#type,
             id,
-            namespace,
         };
         json.serialize(serializer)
     }
@@ -210,28 +198,25 @@ impl<'de> Deserialize<'de> for NodeId {
     {
         let v = JsonNodeId::deserialize(deserializer)?;
         // Only namespace index is supported. Spec says namespace uri can go there too, but not for this code it wonn't.
-        let namespace = if let Some(namespace) = v.namespace {
-            let namespace = namespace
-                .as_u64()
-                .ok_or_else(|| de::Error::custom("Expected numeric namespace index"))?;
-            if namespace > u16::MAX as u64 {
-                return Err(de::Error::custom("Numeric namespace index is out of range"));
-            }
-            namespace as u16
-        } else {
-            0
-        };
+        let namespace = v
+            .namespace
+            .as_u64()
+            .ok_or_else(|| de::Error::custom("Expected numeric namespace index"))?;
+        if namespace > u16::MAX as u64 {
+            return Err(de::Error::custom("Numeric namespace index is out of range"));
+        }
+        let namespace = namespace as u16;
+
         // Validate and extract
-        let id_type = v.id_type.unwrap_or(0);
-        match id_type {
-            0 => {
+        match v.r#type {
+            1 => {
                 // Numeric
                 let v =
                     v.id.as_u64()
                         .ok_or_else(|| de::Error::custom("Expected Numeric identifier"))?;
                 Ok(NodeId::new(namespace, v as u32))
             }
-            1 => {
+            2 => {
                 // String
                 let v =
                     v.id.as_str()
@@ -242,7 +227,7 @@ impl<'de> Deserialize<'de> for NodeId {
                     Ok(NodeId::new(namespace, String::from(v)))
                 }
             }
-            2 => {
+            3 => {
                 // Guid
                 let v =
                     v.id.as_str()
@@ -255,7 +240,7 @@ impl<'de> Deserialize<'de> for NodeId {
                     Ok(NodeId::new(namespace, v))
                 }
             }
-            3 => {
+            4 => {
                 // Bytestring
                 let v =
                     v.id.as_str()
