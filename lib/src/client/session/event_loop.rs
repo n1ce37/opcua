@@ -89,8 +89,8 @@ impl SessionEventLoop {
         tokio::pin!(stream);
         loop {
             match stream.try_next().await {
-                Ok(None) => break StatusCode::Good,
-                Err(e) => break e,
+                Ok(None) => break,
+                Err(e) => break,
                 _ => (),
             }
         }
