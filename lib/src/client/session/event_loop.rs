@@ -84,12 +84,12 @@ impl SessionEventLoop {
     /// # Returns
     ///
     /// * `StatusCode` - [Status code](StatusCode) indicating how the session terminated.
-    pub async fn run(self) {
+    pub async fn run(self) -> StatusCode {
         let stream = self.enter();
         tokio::pin!(stream);
         loop {
             match stream.try_next().await {
-                Ok(None) => break,
+                Ok(None) => break StatusCode::Good,
                 Err(e) => break,
                 _ => (),
             }
