@@ -4,6 +4,7 @@ use std::{
 };
 
 use futures::{stream::BoxStream, Stream, StreamExt, TryStreamExt};
+use tokio::sync::mpsc;
 
 use crate::{
     client::{
@@ -84,21 +85,29 @@ impl SessionEventLoop {
     /// # Returns
     ///
     /// * `StatusCode` - [Status code](StatusCode) indicating how the session terminated.
-    pub async fn run(self) -> StatusCode {
+    pub async fn run(self, signal: mpsc::Sender<StatusCode>) {
         let stream = self.enter();
         tokio::pin!(stream);
         loop {
-            match stream.try_next().await {
-                Ok(None) => break StatusCode::Good,
-                Err(e) => break,
+            let r = stream.try_next().await;
+
+            match r {
+                Ok(None) => {
+                    signal.send(StatusCode::Good).await;
+                    return;
+                }
+                Err(e) => {
+                    signal.send(e).await;
+                    return;
+                }
                 _ => (),
             }
         }
     }
 
-    pub fn spwan(self) {
-        tokio::task::spawn(self.run());
-    }
+    // pub fn spwan(self) {
+    //     tokio::task::spawn(self.run());
+    // }
 
     /// Start the event loop, returning a stream that must be polled until it is closed.
     /// The stream will return `None` when the transport is closed manually, or
